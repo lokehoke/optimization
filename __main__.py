@@ -90,6 +90,8 @@ def main(input_file):
                     else:
                         state.set_stacker_cost(info[1], float(info[2]))
             elif mode == ICEE_WORD:
+                if int(info[1]) >= int(info[2]):
+                    raise ValueError()
                 state.add_bans(int(info[0]), int(info[1]), int(info[2]))
         except (ValueError):
             error(i, line)
