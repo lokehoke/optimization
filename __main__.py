@@ -3,11 +3,14 @@ import logging
 import sys
 
 from lib.game import State
+from lib.math import Vector2, dist
+
 
 handler = logging.StreamHandler(stream=sys.stderr)
 logger = logging.getLogger()
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
+
 
 TRAC_WORD = 'TRAC'
 SHIP_WORD = 'SHIP'
@@ -21,9 +24,16 @@ modes = (TRAC_WORD, SHIP_WORD, MONE_WORD, ICEE_WORD, PATH_WORD, COMMENT_WORD, EN
 SHUTTER_KEY = 'S'
 STACKER_KEY = 'H'
 
+ACTION_STAND = 0
+ACTION_MOVE = 1
+ACTION_PUT = 2
+ACTION_GET = 3
+ACTION_FIRE = 4
+
 def error(i, line):
     logging.error(f"error in {i} line: {line}")
     exit()
+
 
 @click.command()
 @click.option(
@@ -40,6 +50,13 @@ def main(input_file):
 
     skip = False
     first_mone = True
+
+    path_mode = ''
+    path_ship = None
+    path_rows = 0
+    path_current_action = ACTION_STAND
+    path_position = Vector2(0, 0)
+    path_time = -1
 
     i = 0
 
@@ -93,9 +110,51 @@ def main(input_file):
                 if int(info[1]) >= int(info[2]):
                     raise ValueError()
                 state.add_bans(int(info[0]), int(info[1]), int(info[2]))
-        except (ValueError):
+            elif mode == PATH_WORD:
+                if path_rows == 0:
+                    if info[0] in (SHUTTER_KEY, STACKER_KEY):
+                        path_mode = info[0]
+                    else:
+                        error(i, line)
+                    if path_mode == SHUTTER_KEY:
+                        path_ship = state.get_shutter(info[1])
+                    elif path_mode == STACKER_KEY:
+                        path_ship = state.get_stacker(info[1])
+
+                    path_rows = int(info[2])
+                    path_time = -1
+                else:
+                    assert int(info[2]) > path_time, f"time was expected to grow error: line: {i} \n {line}"
+                    path_rows -= 1
+                    d = dist(path_position, Vector2(info[0], info[1]))
+                    if path_current_action == ACTION_STAND:
+                        assert path_position.x == int(info[0]), f"move after stand error: line: {i} \n {line}"
+                        assert path_position.y == int(info[1]), f"move after stand error: line: {i} \n {line}"
+                    elif path_current_action == ACTION_MOVE:
+                        assert path_ship.speed * (int(info[2]) - path_time) - d <= 0, f"so fast move: line: {i} \n {line}"
+                    elif path_current_action == ACTION_PUT:
+                        assert path_ship.speed * (int(info[2]) - path_time) - d <= 0, f"so fast move: line: {i} \n {line}"
+                        assert not path_ship.is_shutter(), f"must be stacker: {i} \n {line}"
+                        state.find_trac(path_position, Vector2(info[0], info[1])).do1_filling(int(info[2]))
+                    elif path_current_action == ACTION_FIRE:
+                        assert path_ship.speed * (int(info[2]) - path_time) - d <= 0, f"so fast move: line: {i} \n {line}"
+                        assert path_ship.is_shutter(), f"must be shutter: {i} \n {line}"
+                        state.find_trac(path_position, Vector2(info[0], info[1])).do2_fireing(int(info[2]))
+                    elif path_current_action == ACTION_GET:
+                        assert path_ship.speed * (int(info[2]) - path_time) - d <= 0, f"so fast move: line: {i} \n {line}"
+                        assert not path_ship.is_shutter(), f"must be stacker: {i} \n {line}"
+                        state.find_trac(path_position, Vector2(info[0], info[1])).do3_getting(int(info[2]))
+
+                    path_position.x = int(info[0])
+                    path_position.y = int(info[1])
+                    path_time = int(info[2])
+                    path_current_action = int(info[3])
+        except Exception as e:
+            print(e)
             error(i, line)
 
+    for t in state.tracs:
+        t.validate()
 
 if __name__ == '__main__':
     main()
