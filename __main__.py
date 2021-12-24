@@ -1,6 +1,7 @@
 import click
 import logging
 import sys
+import math
 
 from lib.game import State
 from lib.math import Vector2, dist
@@ -131,17 +132,17 @@ def main(input_file):
                         assert path_position.x == int(info[0]), f"move after stand error: line: {i} \n {line}"
                         assert path_position.y == int(info[1]), f"move after stand error: line: {i} \n {line}"
                     elif path_current_action == ACTION_MOVE:
-                        assert path_ship.speed * (int(info[2]) - path_time) - d <= 0, f"so fast move: line: {i} \n {line}"
+                        assert path_ship.speed * (int(info[2]) - path_time - 1) - d <= 0, f"so fast move: line: {i} \n {line}"
                     elif path_current_action == ACTION_PUT:
-                        assert path_ship.speed * (int(info[2]) - path_time) - d <= 0, f"so fast move: line: {i} \n {line}"
+                        assert path_ship.speed * (int(info[2]) - path_time - 1) - d <= 0, f"so fast move: line: {i} \n {line}"
                         assert not path_ship.is_shutter(), f"must be stacker: {i} \n {line}"
                         state.find_trac(path_position, Vector2(info[0], info[1])).do1_filling(int(info[2]))
                     elif path_current_action == ACTION_FIRE:
-                        assert path_ship.speed * (int(info[2]) - path_time) - d <= 0, f"so fast move: line: {i} \n {line}"
+                        assert path_ship.speed * (int(info[2]) - path_time - 1) - d <= 0, f"so fast move: line: {i} \n {line}"
                         assert path_ship.is_shutter(), f"must be shutter: {i} \n {line}"
                         state.find_trac(path_position, Vector2(info[0], info[1])).do2_fireing(int(info[2]))
                     elif path_current_action == ACTION_GET:
-                        assert path_ship.speed * (int(info[2]) - path_time) - d <= 0, f"so fast move: line: {i} \n {line}"
+                        assert path_ship.speed * (int(info[2]) - path_time - 1) - d <= 0, f"so fast move: line: {i} \n {line}"
                         assert not path_ship.is_shutter(), f"must be stacker: {i} \n {line}"
                         state.find_trac(path_position, Vector2(info[0], info[1])).do3_getting(int(info[2]))
 
@@ -153,8 +154,100 @@ def main(input_file):
             print(e)
             error(i, line)
 
-    for t in state.tracs:
-        t.validate()
+
+    # turn on for check
+    # for t in state.tracs:
+    #     t.validate()
+
+    print("Good input.txt")
+
+    while not state.game_end:
+        min_t2 = -1
+        min_t1 = -1
+        min_sh = None
+        min_trac = None
+
+        for sh in state.shutter:
+            for trac in range(len(state.tracs)):
+                av, t1, t2 = state.availableTrack(state.shutter[sh], trac)
+                if av and (min_t2 == -1 or min_t2 > t2):
+                    min_t2 = t2
+                    min_t1 = t1
+                    min_sh = state.shutter[sh]
+                    min_trac = trac
+        for sh in state.stacker:
+            for trac in range(len(state.tracs)):
+                av, t1, t2 = state.availableTrack(state.stacker[sh], trac)
+                if av and (min_t2 == -1 or min_t2 > t2):
+                    min_t1 = t1
+                    min_t2 = t2
+                    min_sh = state.stacker[sh]
+                    min_trac = trac
+
+
+        trac_wrong_status = True
+        for trac in range(len(state.tracs)):
+            if state.tracs[trac].last_status != 2:
+                trac_wrong_status = False
+
+        if trac_wrong_status: # end of game
+            for sh in state.shutter:
+                sh = state.shutter[sh]
+                if sh.coor.x != sh.coor.y or sh.coor.x != 0:
+                    sh.history.append(f"{sh.coor.x} {sh.coor.y} {math.ceil(sh.time)} 1")
+                    sh.time += dist(sh.coor, Vector2(0, 0)) / sh.speed
+                    sh.coor = Vector2(0, 0)
+                    sh.history.append(f"{sh.coor.x} {sh.coor.y} {math.ceil(sh.time)} 0")
+            for sh in state.stacker:
+                sh = state.stacker[sh]
+                if sh.coor.x != sh.coor.y or sh.coor.x != 0:
+                    sh.history.append(f"{sh.coor.x} {sh.coor.y} {math.ceil(sh.time)} 1")
+                    sh.time += dist(sh.coor, Vector2(0, 0)) / sh.speed
+                    sh.coor = Vector2(0, 0)
+                    sh.history.append(f"{sh.coor.x} {sh.coor.y} {math.ceil(sh.time)} 0")
+            break
+
+        if min_t2 == -1:
+            for sh in state.shutter:
+                sh = state.shutter[sh]
+                sh.history.append(f"{min_sh.coor.x} {min_sh.coor.y} {math.ceil(min_sh.time)} 0")
+                sh.time += 1
+            for sh in state.stacker:
+                sh = state.stacker[sh]
+                sh.history.append(f"{min_sh.coor.x} {min_sh.coor.y} {math.ceil(min_sh.time)} 0")
+                sh.time += 1
+            continue
+
+
+        min_sh.history.append(f"{min_sh.coor.x} {min_sh.coor.y} {math.ceil(min_sh.time)} 1")
+        if min_sh.is_stacker():
+            if state.tracs[min_trac].last_status == -1:
+                min_sh.detectors -= state.tracs[min_trac].detectors
+                min_sh.history.append(f"{state.tracs[min_trac].start.x} {state.tracs[min_trac].start.y} {math.ceil(min_t1)} 2")
+            else:
+                min_sh.detectors += state.tracs[min_trac].detectors
+                min_sh.history.append(f"{state.tracs[min_trac].start.x} {state.tracs[min_trac].start.y} {math.ceil(min_t1)} 3")
+        else:
+            min_sh.history.append(f"{state.tracs[min_trac].start.x} {state.tracs[min_trac].start.y} {math.ceil(min_t1)} 4")
+
+        min_sh.coor = state.tracs[min_trac].end
+        min_sh.time = min_t2
+        state.tracs[min_trac].update_status(min_t2)
+
+
+    for sh in state.shutter:
+        sh = state.shutter[sh]
+        s = "S" if sh.is_shutter() else "H"
+        print(f"{s} {sh.name} {len(sh.history)}")
+        for h in sh.history:
+            print(h)
+    for sh in state.stacker:
+        sh = state.stacker[sh]
+        s = "S" if sh.is_shutter() else "H"
+        print(f"{s} {sh.name} {len(sh.history)}")
+        for h in sh.history:
+            print(h)
+
 
 if __name__ == '__main__':
     main()

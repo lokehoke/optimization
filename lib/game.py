@@ -1,5 +1,9 @@
 from lib.math import Vector2, dist
 
+TRAC_STATUS_NOT_INIT = -1
+TRAC_STATUS_EMPTY = 0
+TRAC_STATUS_FULL = 1
+TRAC_STATUS_END = 2
 
 class State(object):
     def __init__(self):
@@ -8,6 +12,31 @@ class State(object):
         self.stacker = {}
         self.sensor_cost = -1
         self.bans = {}
+        self.game_end = False
+
+    def availableTrack(self, ship, trac):
+        t1 = ship.time + dist(self.tracs[trac].start, ship.coor) / ship.speed
+        t2 = t1 + dist(self.tracs[trac].start, self.tracs[trac].end) / ship.speed
+
+        if self.tracs[trac].status[self.tracs[trac].last_status] > t1:
+            return [False, t1, t2]
+
+        if ship.is_shutter() and self.tracs[trac].last_status == TRAC_STATUS_EMPTY:
+            if trac in self.bans:
+                for b in self.bans[trac]:
+                    if b.x <= t1 and b.y >= t1 or b.x <= t2 and b.y >= t2:
+                        return [False, t1, t2]
+            return [True, t1, t2]
+        if ship.is_stacker() and self.tracs[trac].last_status in (TRAC_STATUS_NOT_INIT, TRAC_STATUS_FULL):
+            if trac in self.bans:
+                for b in self.bans[trac]:
+                    if b.x <= t1 and b.y >= t1 or b.x <= t2 and b.y >= t2:
+                        return [False, t1, t2]
+            if self.tracs[trac].last_status == TRAC_STATUS_NOT_INIT and self.tracs[trac].detectors > ship.detectors:
+                return [False, t1, t2]
+            return [True, t1, t2]
+        return [False, t1, t2]
+
 
     def add_trac(self, x1, x2, y1, y2, step):
         self.tracs.append(Trac(x1, x2, y1, y2, step))
@@ -21,8 +50,8 @@ class State(object):
         else:
             raise ValueError()
 
-    def add_stacker(self, name, speed, max_detectors):
-        self.stacker[name] = Stacker(name, speed, max_detectors)
+    def add_stacker(self, name, speed, detectors):
+        self.stacker[name] = Stacker(name, speed, detectors)
 
     def get_stacker(self, name):
         if name in self.stacker:
@@ -57,9 +86,6 @@ class State(object):
         raise Exception("trac not find")
 
 
-TRAC_STATUS_EMPTY = 0
-TRAC_STATUS_FULL = 1
-TRAC_STATUS_END = 2
 
 class Trac(object):
     def __init__(self, x1, y1, x2, y2, step):
@@ -67,15 +93,29 @@ class Trac(object):
         self.end = Vector2(x2, y2)
         self.step = step
         self.status = {}
+        self.status[TRAC_STATUS_NOT_INIT] = 0
+        self.last_status = TRAC_STATUS_NOT_INIT
+        self.detectors = dist(self.start, self.end) // self.step
 
     def do1_filling(self, t):
         self.status[TRAC_STATUS_EMPTY] = t
+        self.last_status = TRAC_STATUS_EMPTY
 
     def do2_fireing(self, t):
         self.status[TRAC_STATUS_FULL] = t
+        self.last_status = TRAC_STATUS_FULL
 
     def do3_getting(self, t):
         self.status[TRAC_STATUS_END] = t
+        self.last_status = TRAC_STATUS_END
+
+    def update_status(self, t):
+        if self.last_status == TRAC_STATUS_NOT_INIT:
+            self.do1_filling(t)
+        elif self.last_status == TRAC_STATUS_EMPTY:
+            self.do2_fireing(t)
+        elif self.last_status == TRAC_STATUS_FULL:
+            self.do3_getting(t)
 
     def validate(self):
         assert self.status[TRAC_STATUS_EMPTY] <= self.status[TRAC_STATUS_FULL] and self.status[TRAC_STATUS_FULL] <= self.status[TRAC_STATUS_END], "trac round not complite"
@@ -89,9 +129,15 @@ class Ship(object):
         self.name = name
         self.speed = speed
         self.cost = -1
+        self.coor = Vector2(0, 0)
+        self.time = 0
+        self.history = []
 
     def is_shutter(self):
         return self.type == TYPE_SHIP_SHUTTER
+
+    def is_stacker(self):
+        return self.type == TYPE_SHIP_STACKER
 
 class Shutter(Ship):
     def __init__(self, name, speed):
@@ -100,8 +146,8 @@ class Shutter(Ship):
 
 
 class Stacker(Ship):
-    def __init__(self, name, speed, max_detectors):
+    def __init__(self, name, speed, detectors):
         super().__init__(name, speed)
-        self.max_detectors = max_detectors
+        self.detectors = detectors
         self.type = TYPE_SHIP_STACKER
 
