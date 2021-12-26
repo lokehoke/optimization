@@ -125,24 +125,24 @@ def main(input_file):
                     path_rows = int(info[2])
                     path_time = -1
                 else:
-                    assert int(info[2]) > path_time, f"time was expected to grow error: line: {i} \n {line}"
+                    assert int(info[2]) >= path_time, f"time was expected to grow error: line: {i} \n {line}"
                     path_rows -= 1
                     d = dist(path_position, Vector2(info[0], info[1]))
                     if path_current_action == ACTION_STAND:
                         assert path_position.x == int(info[0]), f"move after stand error: line: {i} \n {line}"
                         assert path_position.y == int(info[1]), f"move after stand error: line: {i} \n {line}"
                     elif path_current_action == ACTION_MOVE:
-                        assert path_ship.speed * (int(info[2]) - path_time - 1) - d <= 0, f"so fast move: line: {i} \n {line}"
+                        assert path_ship.speed * (int(info[2]) - path_time - 1) - d < 0, f"so fast move: line: {i} \n {line}"
                     elif path_current_action == ACTION_PUT:
-                        assert path_ship.speed * (int(info[2]) - path_time - 1) - d <= 0, f"so fast move: line: {i} \n {line}"
+                        assert path_ship.speed * (int(info[2]) - path_time - 1) - d < 0, f"so fast move: line: {i} \n {line}"
                         assert not path_ship.is_shutter(), f"must be stacker: {i} \n {line}"
                         state.find_trac(path_position, Vector2(info[0], info[1])).do1_filling(int(info[2]))
                     elif path_current_action == ACTION_FIRE:
-                        assert path_ship.speed * (int(info[2]) - path_time - 1) - d <= 0, f"so fast move: line: {i} \n {line}"
+                        assert path_ship.speed * (int(info[2]) - path_time - 1) - d < 0, f"so fast move: line: {i} \n {line}"
                         assert path_ship.is_shutter(), f"must be shutter: {i} \n {line}"
                         state.find_trac(path_position, Vector2(info[0], info[1])).do2_fireing(int(info[2]))
                     elif path_current_action == ACTION_GET:
-                        assert path_ship.speed * (int(info[2]) - path_time - 1) - d <= 0, f"so fast move: line: {i} \n {line}"
+                        assert path_ship.speed * (int(info[2]) - path_time - 1) - d < 0, f"so fast move: line: {i} \n {line}"
                         assert not path_ship.is_shutter(), f"must be stacker: {i} \n {line}"
                         state.find_trac(path_position, Vector2(info[0], info[1])).do3_getting(int(info[2]))
 
@@ -156,8 +156,9 @@ def main(input_file):
 
 
     # turn on for check
-    # for t in state.tracs:
-    #     t.validate()
+    for t in state.tracs:
+        t.validate()
+    return
 
     print("Good input.txt")
 
@@ -235,19 +236,29 @@ def main(input_file):
         state.tracs[min_trac].update_status(min_t2)
 
 
+    max_t = 0
+    pric_per_t = 0
+    count_detector = 0
+
     for sh in state.shutter:
         sh = state.shutter[sh]
+        max_t = max(max_t, sh.time)
+        pric_per_t += sh.cost
         s = "S" if sh.is_shutter() else "H"
         print(f"{s} {sh.name} {len(sh.history)}")
         for h in sh.history:
             print(h)
     for sh in state.stacker:
         sh = state.stacker[sh]
+        max_t = max(max_t, sh.time)
+        pric_per_t += sh.cost
+        count_detector += sh.detectors
         s = "S" if sh.is_shutter() else "H"
         print(f"{s} {sh.name} {len(sh.history)}")
         for h in sh.history:
             print(h)
 
+    print(max_t * (pric_per_t + count_detector * state.sensor_cost) / 24 / 1000)
 
 if __name__ == '__main__':
     main()
